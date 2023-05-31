@@ -1,3 +1,10 @@
+_dacegraphs/
+*.png
+*.jpg
+*.jpeg
+.dacecache/
+*.sdfg
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
