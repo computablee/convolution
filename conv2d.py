@@ -140,7 +140,7 @@ if __name__ == "__main__":
     sdfg.save('conv2d.sdfg')
     sdfg.compile()
 
-    kernel, kernel_coefficient, kernel_bias = emboss()
+    kernel, kernel_coefficient, kernel_bias = big_gaussian_blur()
 
     IMGCOUNT = images.shape[0]
     IMGDIMX = images.shape[1]
