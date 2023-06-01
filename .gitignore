@@ -1,3 +1,5 @@
+configure_environment.sh
+
 _dacegraphs/
 *.png
 *.jpg

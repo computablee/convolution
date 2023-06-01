@@ -113,7 +113,7 @@ def emboss():
 
 
 if __name__ == "__main__":
-    image = np.asarray(Image.open('pictures/frog.jpg'))
+    image = np.asarray(Image.open('pictures/image.jpg'))
 
     image = image / 255.0
     print(image.shape)

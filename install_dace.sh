@@ -1,3 +1,3 @@
 #!/bin/bash
 
-pip install -u git+https://github.com/spcl/dace.git
+pip3 install --user git+https://github.com/spcl/dace.git
