@@ -12,12 +12,12 @@ IMGCOUNT = dace.symbol('IMGCOUNT')
 PAD_WIDTH = dace.symbol('PAD_WIDTH')
 CHANNELS = dace.symbol('CHANNELS')
 
-CDIM = 3
-IMGDIMX = 690
-IMGDIMY = 1080
-IMGCOUNT = 1
-PAD_WIDTH = 1
-CHANNELS = 3
+#CDIM = 3
+#IMGDIMX = 690
+#IMGDIMY = 1080
+#IMGCOUNT = 1
+#PAD_WIDTH = 1
+#CHANNELS = 3
 
 
 @dace.program
@@ -26,34 +26,27 @@ def conv2d(image: dace.float64[IMGCOUNT, IMGDIMX, IMGDIMY, CHANNELS],
            bias: dace.float64[CHANNELS],
            coefficient: dace.float64):
     result = np.zeros((IMGCOUNT, IMGDIMX, IMGDIMY, CHANNELS), dtype=np.float64)
-    padded_image = np.ndarray(
-        (IMGCOUNT, IMGDIMX + 2 * PAD_WIDTH, IMGDIMY + 2 * PAD_WIDTH, CHANNELS), dtype=np.float64)
-
-    padded_image[:, PAD_WIDTH:IMGDIMX + PAD_WIDTH,
-                 PAD_WIDTH:IMGDIMY + PAD_WIDTH, :] = image[:, :, :, :]
-    padded_image[:, :PAD_WIDTH, PAD_WIDTH:-PAD_WIDTH, :] = image[:, 0, :, :]
-    padded_image[:, -PAD_WIDTH:, PAD_WIDTH:-PAD_WIDTH, :] = image[:, -1, :, :]
-    padded_image[:, PAD_WIDTH:-PAD_WIDTH, :PAD_WIDTH, :] = image[:, :, 0, :]
-    padded_image[:, PAD_WIDTH:-PAD_WIDTH, -PAD_WIDTH:, :] = image[:, :, -1, :]
-
-    padded_image[:, :PAD_WIDTH, :PAD_WIDTH, :] = image[:, 0, 0, :]
-    padded_image[:, :PAD_WIDTH, -PAD_WIDTH:, :] = image[:, 0, -1, :]
-    padded_image[:, -PAD_WIDTH:, :PAD_WIDTH, :] = image[:, -1, 0, :]
-    padded_image[:, -PAD_WIDTH:, -PAD_WIDTH:, :] = image[:, -1, -1, :]
 
     for img in dace.map[0:IMGCOUNT] @ dace.ScheduleType.Sequential:
-        for x, y in dace.map[PAD_WIDTH:IMGDIMX + PAD_WIDTH, PAD_WIDTH:IMGDIMY + PAD_WIDTH] @ dace.ScheduleType.CPU_Multicore:
+        for x, y in dace.map[0:IMGDIMX, 0:IMGDIMY] @ dace.ScheduleType.CPU_Multicore:
             for kx, ky in dace.map[0:CDIM, 0:CDIM]:
+                if x + kx < 0 or x + kx > IMGDIMX:
+                    nkx = 0
+                else:
+                    nkx = kx
+                if y + ky < 0 or y + ky > IMGDIMY:
+                    nky = 0
+                else:
+                    nky = ky
+
                 for c in dace.map[0:CHANNELS]:
-                    result[img, x - PAD_WIDTH, y - PAD_WIDTH, c] += padded_image[
-                        img, x + kx - PAD_WIDTH, y + ky - PAD_WIDTH, c] * kernel[kx, ky] * coefficient
-            result[img, x - PAD_WIDTH, y - PAD_WIDTH, :] += bias
+                    result[img, x, y, c] += image[img, x + nkx, y + nky, c] * kernel[kx, ky] * coefficient
+            result[img, x, y, :] += bias
 
     return result
 
 
 def find_map_by_param(sdfg: dace.SDFG, pname: str) -> dace.nodes.MapEntry:
-    """ Finds the first map entry node by the given parameter name. """
     return next(n for n, _ in sdfg.all_nodes_recursive() if isinstance(n, dace.nodes.MapEntry) and pname in n.params)
 
 
@@ -122,7 +115,6 @@ def emboss():
 
 
 if __name__ == "__main__":
-    # (x_train, y_train), (x_test, y_test) = fashion_mnist.load_data()
     image = np.asarray(Image.open('pictures/frog.jpg'))
 
     image = image / 255.0
@@ -136,6 +128,7 @@ if __name__ == "__main__":
     fig.savefig('original.png')
 
     sdfg = conv2d.to_sdfg()
+
     sdfg = auto_optimize.auto_optimize(sdfg, dace.DeviceType.CPU)
     # sdfg.apply_transformations(InLocalStorage)
     # sdfg.apply_transformations_repeated(MapCollapse)
@@ -145,6 +138,7 @@ if __name__ == "__main__":
     # sdfg.apply_transformations_repeated(RedundantArrayCopying)
     # sdfg.apply_transformations(MapTilingWithOverlap)
     find_map_by_param(sdfg, 'x').collapse = 2
+
     sdfg.save('conv2d.sdfg')
     sdfg.compile()
 
@@ -165,15 +159,6 @@ if __name__ == "__main__":
             images, kernel, kernel_bias, kernel_coefficient,
             IMGCOUNT=IMGCOUNT, IMGDIMX=IMGDIMX, IMGDIMY=IMGDIMY, PAD_WIDTH=PAD_WIDTH, CDIM=CDIM, CHANNELS=CHANNELS)
 
-    # print(prof.times)
-
-    # print(padded_image[0, :, -1, 2])
-    # print(images[0, :, -1, 2])
-
     fig = plt.figure()
     plt.imshow(new_images[0], vmin=0, vmax=1)
     fig.savefig('new.png')
-
-    # fig = plt.figure()
-    # plt.imshow(padded[0], vmin=0, vmax=1)
-    # fig.savefig('padded.png')
