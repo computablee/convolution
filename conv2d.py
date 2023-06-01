@@ -1,5 +1,6 @@
 import dace
 from dace.transformation.dataflow import *
+from dace.transformation.interstate import *
 import numpy as np
 import matplotlib.pyplot as plt
 from PIL import Image
@@ -8,40 +9,35 @@ from dace.transformation.auto import auto_optimize
 CDIM = dace.symbol('CDIM')
 IMGDIMX = dace.symbol('IMGDIMX')
 IMGDIMY = dace.symbol('IMGDIMY')
-IMGCOUNT = dace.symbol('IMGCOUNT')
+#IMGCOUNT = dace.symbol('IMGCOUNT')
 CHANNELS = dace.symbol('CHANNELS')
 
-#CDIM = 3
-#IMGDIMX = 690
-#IMGDIMY = 1080
-#IMGCOUNT = 1
-#CHANNELS = 3
+CDIM = 5
+IMGDIMX = 4320
+IMGDIMY = 7680
+CHANNELS = 3
 
 
 @dace.program
-def conv2d(image: dace.float64[IMGCOUNT, IMGDIMX, IMGDIMY, CHANNELS],
+def conv2d(image: dace.float64[IMGDIMX, IMGDIMY, CHANNELS],
            kernel: dace.float64[CDIM, CDIM],
            bias: dace.float64[CHANNELS],
-           coefficient: dace.float64):
-    result = np.zeros((IMGCOUNT, IMGDIMX, IMGDIMY, CHANNELS), dtype=np.float64)
+           coefficient: dace.float64,
+           result: dace.float64[IMGDIMX, IMGDIMY, CHANNELS]):
+    for x, y in dace.map[0:IMGDIMX, 0:IMGDIMY]:
+        for kx, ky in dace.map[0:CDIM, 0:CDIM]:
+            if x + kx < 0 or x + kx > IMGDIMX:
+                nkx = 0
+            else:
+                nkx = kx
+            if y + ky < 0 or y + ky > IMGDIMY:
+                nky = 0
+            else:
+                nky = ky
 
-    for img in dace.map[0:IMGCOUNT] @ dace.ScheduleType.Sequential:
-        for x, y in dace.map[0:IMGDIMX, 0:IMGDIMY] @ dace.ScheduleType.CPU_Multicore:
-            for kx, ky in dace.map[0:CDIM, 0:CDIM]:
-                if x + kx < 0 or x + kx > IMGDIMX:
-                    nkx = 0
-                else:
-                    nkx = kx
-                if y + ky < 0 or y + ky > IMGDIMY:
-                    nky = 0
-                else:
-                    nky = ky
-
-                for c in dace.map[0:CHANNELS]:
-                    result[img, x, y, c] += image[img, x + nkx, y + nky, c] * kernel[kx, ky] * coefficient
-            result[img, x, y, :] += bias
-
-    return result
+            for c in dace.map[0:CHANNELS]:
+                result[x, y, c] += image[x + nkx, y + nky, c] * kernel[kx, ky] * coefficient
+        result[x, y, :] += bias
 
 
 def find_map_by_param(sdfg: dace.SDFG, pname: str) -> dace.nodes.MapEntry:
@@ -117,17 +113,16 @@ if __name__ == "__main__":
 
     image = image / 255.0
     print(image.shape)
-    images = np.ndarray(
-        (1, image.shape[0], image.shape[1], image.shape[2]), dtype=np.float64)
-    images[0, :, :, :] = image[:, :, :]
 
     fig = plt.figure()
-    plt.imshow(images[0], vmin=0, vmax=1)
+    plt.imshow(image, vmin=0, vmax=1)
     fig.savefig('original.png')
 
     sdfg = conv2d.to_sdfg()
 
-    sdfg = auto_optimize.auto_optimize(sdfg, dace.DeviceType.CPU)
+    sdfg = auto_optimize.auto_optimize(sdfg, dace.DeviceType.GPU)
+    sdfg.apply_gpu_transformations()
+    # sdfg.apply_transformations(GPUTransformSDFG)
     # sdfg.apply_transformations(InLocalStorage)
     # sdfg.apply_transformations_repeated(MapCollapse)
     # sdfg.apply_transformations_repeated(AccumulateTransient)
@@ -137,26 +132,28 @@ if __name__ == "__main__":
     # sdfg.apply_transformations(MapTilingWithOverlap)
     find_map_by_param(sdfg, 'x').collapse = 2
 
+    
+
     sdfg.save('conv2d.sdfg')
     sdfg.compile()
 
     kernel, kernel_coefficient, kernel_bias = big_gaussian_blur()
 
-    IMGCOUNT = images.shape[0]
-    IMGDIMX = images.shape[1]
-    IMGDIMY = images.shape[2]
-    PAD_WIDTH = kernel.shape[0] // 2
+    IMGDIMX = image.shape[0]
+    IMGDIMY = image.shape[1]
     CDIM = kernel.shape[0]
-    CHANNELS = images.shape[3]
+    CHANNELS = image.shape[2]
 
-    print("IMGCOUNT: {}, IMGDIMX: {}, IMGDIMY: {}, PAD_WIDTH: {}, CDIM: {}, CHANNELS: {}".format(
-        images.shape[0], images.shape[1], images.shape[2], kernel.shape[0] // 2, kernel.shape[0], images.shape[3]))
+    print("IMGDIMX: {}, IMGDIMY: {}, CDIM: {}, CHANNELS: {}".format(
+        IMGDIMX, IMGDIMY, CDIM, CHANNELS))
+
+    result = np.ndarray((IMGDIMX, IMGDIMY, CHANNELS), dtype=np.float64)
 
     with dace.profile(warmup=5, repetitions=50) as prof:
-        new_images = sdfg(
-            images, kernel, kernel_bias, kernel_coefficient,
-            IMGCOUNT=IMGCOUNT, IMGDIMX=IMGDIMX, IMGDIMY=IMGDIMY, CDIM=CDIM, CHANNELS=CHANNELS)
+        sdfg(
+            image, kernel, kernel_bias, kernel_coefficient, result,
+            IMGDIMX=IMGDIMX, IMGDIMY=IMGDIMY, CDIM=CDIM, CHANNELS=CHANNELS)
 
-    fig = plt.figure()
-    plt.imshow(new_images[0], vmin=0, vmax=1)
-    fig.savefig('new.png')
+    # fig = plt.figure()
+    # plt.imshow(new_image, vmin=0, vmax=1)
+    # fig.savefig('new.png')
