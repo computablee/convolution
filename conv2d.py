@@ -17,7 +17,6 @@ IMGDIMX = 4320
 IMGDIMY = 7680
 CHANNELS = 3
 
-
 @dace.program
 def conv2d(image: dace.float64[IMGDIMX, IMGDIMY, CHANNELS],
            kernel: dace.float64[CDIM, CDIM],
