@@ -5,11 +5,11 @@ import numpy as np
 import matplotlib.pyplot as plt
 from PIL import Image
 from dace.transformation.auto import auto_optimize
+from dace.transformation import helpers as xfutil
 
 CDIM = dace.symbol('CDIM')
 IMGDIMX = dace.symbol('IMGDIMX')
 IMGDIMY = dace.symbol('IMGDIMY')
-#IMGCOUNT = dace.symbol('IMGCOUNT')
 CHANNELS = dace.symbol('CHANNELS')
 
 CDIM = 5
@@ -129,9 +129,12 @@ if __name__ == "__main__":
     sdfg.apply_transformations_repeated(TaskletFusion)
     # sdfg.apply_transformations(Vectorization)
     # sdfg.apply_transformations_repeated(RedundantArrayCopying)
-    # sdfg.apply_transformations(MapTilingWithOverlap)
+    # sdfg.apply_transformations(MapTiling)
+
     find_map_by_param(sdfg, 'x').collapse = 2
 
+    # divides_evenly = (image.shape[0] % 64 == 0) and (image.shape[1] % 64 == 0)
+    # xfutil.tile(sdfg, find_map_by_param(sdfg, 'y'), divides_evenly, True, x=4, y=4)
     
 
     sdfg.save('conv2d.sdfg')
