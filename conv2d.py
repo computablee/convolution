@@ -12,31 +12,26 @@ IMGDIMX = dace.symbol('IMGDIMX')
 IMGDIMY = dace.symbol('IMGDIMY')
 CHANNELS = dace.symbol('CHANNELS')
 
-CDIM = 5
-IMGDIMX = 4320
-IMGDIMY = 7680
-CHANNELS = 3
-
 @dace.program
-def conv2d(image: dace.float64[IMGDIMX, IMGDIMY, CHANNELS],
-           kernel: dace.float64[CDIM, CDIM],
-           bias: dace.float64[CHANNELS],
-           coefficient: dace.float64,
-           result: dace.float64[IMGDIMX, IMGDIMY, CHANNELS]):
+def conv2d(image: dace.float32[IMGDIMX, IMGDIMY, CHANNELS],
+           kernel: dace.float32[CDIM, CDIM],
+           bias: dace.float32,
+           coefficient: dace.float32,
+           result: dace.float32[IMGDIMX, IMGDIMY, CHANNELS]):
+    
     for x, y in dace.map[0:IMGDIMX, 0:IMGDIMY]:
         for kx, ky in dace.map[0:CDIM, 0:CDIM]:
-            if x + kx < 0 or x + kx > IMGDIMX:
+            if x + kx < 0 or x + kx >= IMGDIMX:
                 nkx = 0
             else:
                 nkx = kx
-            if y + ky < 0 or y + ky > IMGDIMY:
+            if y + ky < 0 or y + ky >= IMGDIMY:
                 nky = 0
             else:
                 nky = ky
 
             for c in dace.map[0:CHANNELS]:
-                result[x, y, c] += image[x + nkx, y + nky, c] * kernel[kx, ky] * coefficient
-        result[x, y, :] += bias
+                result[x, y, c] += image[x + nkx, y + nky, c] * kernel[kx, ky] * coefficient + bias
 
 
 def find_map_by_param(sdfg: dace.SDFG, pname: str) -> dace.nodes.MapEntry:
@@ -44,27 +39,27 @@ def find_map_by_param(sdfg: dace.SDFG, pname: str) -> dace.nodes.MapEntry:
 
 
 sharpen_conv = np.array(
-    [[0, -1, 0], [-1, 5, -1], [0, -1, 0]], dtype=np.float64)
+    [[0, -1, 0], [-1, 5, -1], [0, -1, 0]], dtype=np.float32)
 edge_conv = np.array(
-    [[-1, -1, -1], [-1, 8, -1], [-1, -1, -1]], dtype=np.float64)
+    [[-1, -1, -1], [-1, 8, -1], [-1, -1, -1]], dtype=np.float32)
 gaussian_blur_conv = np.array(
-    [[1, 2, 1], [2, 4, 2], [1, 2, 1]], dtype=np.float64)
+    [[1, 2, 1], [2, 4, 2], [1, 2, 1]], dtype=np.float32)
 big_gaussian_blur_conv = np.array([[1, 4, 6, 4, 1], [4, 16, 24, 16, 4], [
-    6, 24, 36, 24, 6], [4, 16, 24, 16, 4], [1, 4, 6, 4, 1]], dtype=np.float64)
-identity_conv = np.array([[0, 0, 0], [0, 1, 0], [0, 0, 0]], dtype=np.float64)
-downshift_conv = np.array([[0, 1, 0], [0, 0, 0], [0, 0, 0]], dtype=np.float64)
+    6, 24, 36, 24, 6], [4, 16, 24, 16, 4], [1, 4, 6, 4, 1]], dtype=np.float32)
+identity_conv = np.array([[0, 0, 0], [0, 1, 0], [0, 0, 0]], dtype=np.float32)
+downshift_conv = np.array([[0, 1, 0], [0, 0, 0], [0, 0, 0]], dtype=np.float32)
 bloom_conv = np.array(
     [[0.003, 0.053, 0.003], [0.053, 1.124, 0.053], [0.003, 0.053, 0.003]])
-invert_conv = np.array([-1], dtype=np.float64)
-emboss_conv = np.array([[-1, -1, 0], [-1, 0, 1], [0, 1, 1]], dtype=np.float64)
+invert_conv = np.array([-1], dtype=np.float32)
+emboss_conv = np.array([[-1, -1, 0], [-1, 0, 1], [0, 1, 1]], dtype=np.float32)
 
-gaussian_blur_coefficient = 1.0 / 16.0
-big_gaussian_blur_coefficient = 1.0 / 256.0
-default_coefficient = 1.0
+gaussian_blur_coefficient = np.float32(1.0 / 16.0)
+big_gaussian_blur_coefficient = np.float32(1.0 / 256.0)
+default_coefficient = np.float32(1.0)
 
-invert_bias = np.array([1.0, 1.0, 1.0], dtype=np.float64)
-emboss_bias = np.array([0.5, 0.5, 0.5], dtype=np.float64)
-default_bias = np.array([0.0, 0.0, 0.0], dtype=np.float64)
+invert_bias = np.float32(1.0)
+emboss_bias = np.float32(0.5)
+default_bias = np.float32(0.0)
 
 
 def deepfry(degree):
@@ -108,7 +103,7 @@ def emboss():
 
 
 if __name__ == "__main__":
-    image = np.asarray(Image.open('pictures/image.jpg'))
+    image = np.asarray(Image.open('pictures/image.png')).astype(np.float32)
 
     image = image / 255.0
     print(image.shape)
@@ -119,27 +114,14 @@ if __name__ == "__main__":
 
     sdfg = conv2d.to_sdfg()
 
-    sdfg = auto_optimize.auto_optimize(sdfg, dace.DeviceType.GPU)
-    sdfg.apply_gpu_transformations()
-    # sdfg.apply_transformations(GPUTransformSDFG)
-    # sdfg.apply_transformations(InLocalStorage)
-    # sdfg.apply_transformations_repeated(MapCollapse)
-    # sdfg.apply_transformations_repeated(AccumulateTransient)
+    sdfg = auto_optimize.auto_optimize(sdfg, dace.DeviceType.CPU)
     sdfg.apply_transformations_repeated(TaskletFusion)
-    # sdfg.apply_transformations(Vectorization)
-    # sdfg.apply_transformations_repeated(RedundantArrayCopying)
-    # sdfg.apply_transformations(MapTiling)
 
     find_map_by_param(sdfg, 'x').collapse = 2
-
-    # divides_evenly = (image.shape[0] % 64 == 0) and (image.shape[1] % 64 == 0)
-    # xfutil.tile(sdfg, find_map_by_param(sdfg, 'y'), divides_evenly, True, x=4, y=4)
     
-
-    sdfg.save('conv2d.sdfg')
     sdfg.compile()
 
-    kernel, kernel_coefficient, kernel_bias = big_gaussian_blur()
+    kernel, kernel_coefficient, kernel_bias = identity()
 
     IMGDIMX = image.shape[0]
     IMGDIMY = image.shape[1]
@@ -149,13 +131,11 @@ if __name__ == "__main__":
     print("IMGDIMX: {}, IMGDIMY: {}, CDIM: {}, CHANNELS: {}".format(
         IMGDIMX, IMGDIMY, CDIM, CHANNELS))
 
-    result = np.ndarray((IMGDIMX, IMGDIMY, CHANNELS), dtype=np.float64)
+    result = np.ndarray((IMGDIMX, IMGDIMY, CHANNELS), dtype=np.float32)
 
-    with dace.profile(warmup=5, repetitions=50) as prof:
-        sdfg(
-            image, kernel, kernel_bias, kernel_coefficient, result,
-            IMGDIMX=IMGDIMX, IMGDIMY=IMGDIMY, CDIM=CDIM, CHANNELS=CHANNELS)
+    sdfg(
+        image, kernel, kernel_bias, kernel_coefficient, result,
+        IMGDIMX=IMGDIMX, IMGDIMY=IMGDIMY, CDIM=CDIM, CHANNELS=CHANNELS)
 
-    # fig = plt.figure()
-    # plt.imshow(new_image, vmin=0, vmax=1)
-    # fig.savefig('new.png')
+    res = Image.fromarray((np.clip(result, 0, 1) * 255).astype(np.uint8))
+    res.save('new.png')
