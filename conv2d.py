@@ -104,13 +104,11 @@ def emboss():
 
 if __name__ == "__main__":
     image = np.asarray(Image.open('pictures/image.png')).astype(np.float32)
+    Image.fromarray(image.astype(np.uint8)).save('original.png')
 
     image = image / 255.0
     print(image.shape)
 
-    fig = plt.figure()
-    plt.imshow(image, vmin=0, vmax=1)
-    fig.savefig('original.png')
 
     sdfg = conv2d.to_sdfg()
 
@@ -121,7 +119,7 @@ if __name__ == "__main__":
     
     sdfg.compile()
 
-    kernel, kernel_coefficient, kernel_bias = identity()
+    kernel, kernel_coefficient, kernel_bias = gaussian_blur()
 
     IMGDIMX = image.shape[0]
     IMGDIMY = image.shape[1]
