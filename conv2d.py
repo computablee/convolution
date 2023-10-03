@@ -31,7 +31,9 @@ def conv2d(image: dace.float32[IMGDIMX, IMGDIMY, CHANNELS],
                 nky = ky
 
             for c in dace.map[0:CHANNELS]:
-                result[x, y, c] += image[x + nkx, y + nky, c] * kernel[kx, ky] * coefficient + bias
+                result[x, y, c] += image[x + nkx, y + nky, c] * kernel[kx, ky] * coefficient
+        
+        result[x, y, :] += bias
 
 
 def find_map_by_param(sdfg: dace.SDFG, pname: str) -> dace.nodes.MapEntry:
@@ -119,7 +121,7 @@ if __name__ == "__main__":
     
     sdfg.compile()
 
-    kernel, kernel_coefficient, kernel_bias = gaussian_blur()
+    kernel, kernel_coefficient, kernel_bias = emboss()
 
     IMGDIMX = image.shape[0]
     IMGDIMY = image.shape[1]
